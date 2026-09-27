@@ -17,7 +17,7 @@ export default function WorkflowForm({ connections }: { connections: Conn[] }) {
   const sources = connections.filter((c) => c.provider === "youtube" || c.provider === "facebook");
   const [sourceId, setSourceId] = useState(sources[0]?.id ?? "");
   const [dest, setDest] = useState<string[]>(connections.filter((c) => c.id !== sources[0]?.id).slice(0, 2).map((c) => c.id));
-  const [rules, setRules] = useState<Record<string, boolean>>({ crop: true, subtitle: false, logo: false, highlights: false });
+  const [rules, setRules] = useState<Record<string, boolean>>({ crop: false, subtitle: false, logo: false, highlights: false });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 

@@ -78,20 +78,28 @@ async function handleRender(sourceItemId: string) {
   try {
     log(`[render] ${item.title}`);
     const source = await fetchSource(item.url, workDir);
-    const info = await probe(source);
-    const srt = rules.subtitle ? await transcribeToSrt(source, workDir) : null;
+    const needsRender = Boolean(rules.crop || rules.subtitle || rules.logo);
+    let duration: number | null = null;
 
-    await render({
-      input: source,
-      output: outPath,
-      rules: { ...rules, maxSeconds: rules.maxSeconds ?? 180 },
-      srtPath: srt ?? undefined,
-      logoPath: rules.logo ? path.join(STORAGE, "assets", `${user.id}-logo.png`) : undefined,
-    });
+    if (needsRender) {
+      const info = await probe(source);
+      duration = Math.round(info.duration);
+      const srt = rules.subtitle ? await transcribeToSrt(source, workDir) : null;
+      await render({
+        input: source,
+        output: outPath,
+        rules: { ...rules, maxSeconds: rules.maxSeconds ?? 180 },
+        srtPath: srt ?? undefined,
+        logoPath: rules.logo ? path.join(STORAGE, "assets", `${user.id}-logo.png`) : undefined,
+      });
+    } else {
+      // โหมดโพสต์คลิปต้นฉบับ: ไม่ตัดต่อ ใช้แรงเครื่องน้อยมาก รันบนแพลนเล็กสุดได้
+      fs.renameSync(source, outPath);
+    }
 
     await db.sourceItem.update({
       where: { id: item.id },
-      data: { renderPath: outPath, renderedAt: new Date(), duration: Math.round(info.duration) },
+      data: { renderPath: outPath, renderedAt: new Date(), duration },
     });
     await db.user.update({ where: { id: user.id }, data: { clipsUsed: { increment: 1 } } });
 

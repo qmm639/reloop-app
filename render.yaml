@@ -5,9 +5,9 @@ services:
     name: reloop
     runtime: docker
     region: singapore
-    # การเรนเดอร์วิดีโอกิน CPU และ RAM มากกว่าบอทตอบคอมเมนต์
-    # เริ่มที่ 1 CPU / 2GB ก่อน ถ้าคลิปไม่ยาวมากลดลงได้ที่หน้า Dashboard
-    plan: 1c-2gb
+    # โหมดเริ่มต้นโพสต์คลิปต้นฉบับ ไม่ตัดต่อ ใช้แพลนเล็กสุดเท่าตัวบอทได้ ($7/เดือน)
+    # ถ้าวันหลังเปิดตัดต่อ/ใส่ซับ ค่อยเพิ่มเป็น 1c-2gb
+    plan: 0.5c-512mb
     healthCheckPath: /
     autoDeploy: true
 
@@ -15,7 +15,7 @@ services:
     disk:
       name: reloop-data
       mountPath: /data
-      sizeGB: 5
+      sizeGB: 2
 
     envVars:
       - key: DATABASE_URL

@@ -14,7 +14,7 @@ const schema = z.object({
   schedule: z.enum(["instant", "peak", "spread"]).default("instant"),
   rules: z
     .object({
-      crop: z.boolean().default(true),
+      crop: z.boolean().default(false),
       subtitle: z.boolean().default(false),
       logo: z.boolean().default(false),
       highlights: z.boolean().default(false),
