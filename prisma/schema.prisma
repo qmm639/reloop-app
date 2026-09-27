@@ -1,0 +1,142 @@
+// Reloop — โครงฐานข้อมูล
+// dev: SQLite (ไม่ต้องติดตั้งอะไรเพิ่ม) | prod: เปลี่ยน provider เป็น "postgresql"
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String?
+  createdAt    DateTime @default(now())
+
+  // สถานะแพ็กเกจ (ซิงก์จาก Stripe webhook)
+  plan             String    @default("free") // free | starter | creator | agency
+  stripeCustomerId String?   @unique
+  stripeSubId      String?
+  subStatus        String?   // active | past_due | canceled
+  periodEnd        DateTime?
+
+  // โควตาการใช้งานต่อรอบบิล
+  clipsUsed    Int      @default(0)
+  usageResetAt DateTime @default(now())
+
+  connections Connection[]
+  workflows   Workflow[]
+}
+
+model Connection {
+  id           String    @id @default(cuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider     String // youtube | tiktok | facebook | instagram
+  externalId   String // channel id / open id / page id
+  displayName  String
+  accessToken  String // เข้ารหัส AES-256-GCM ก่อนเก็บเสมอ
+  refreshToken String?
+  expiresAt    DateTime?
+  scopes       String?
+  meta         String? // JSON เพิ่มเติม เช่น instagram business account id
+  createdAt    DateTime  @default(now())
+
+  workflowsAsSource Workflow[]            @relation("SourceConnection")
+  destinations      WorkflowDestination[]
+  posts             Post[]
+
+  @@unique([userId, provider, externalId])
+}
+
+model Workflow {
+  id       String @id @default(cuid())
+  userId   String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name     String
+
+  sourceConnectionId String?
+  sourceConnection   Connection? @relation("SourceConnection", fields: [sourceConnectionId], references: [id])
+  sourceKind         String // youtube | tiktok | facebook_live | upload
+  sourceRef          String? // channel id / handle / folder
+
+  checkEvery Int     @default(5) // นาที
+  rules      String  @default("{}") // JSON: crop, subtitle, logo, caption, highlights
+  schedule   String  @default("instant") // instant | peak | spread
+  active     Boolean @default(true)
+
+  lastCheckedAt     DateTime?
+  lastSeenExternalId String?
+
+  destinations WorkflowDestination[]
+  items        SourceItem[]
+  posts        Post[]
+  createdAt    DateTime @default(now())
+}
+
+model WorkflowDestination {
+  id           String     @id @default(cuid())
+  workflowId   String
+  workflow     Workflow   @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  connectionId String
+  connection   Connection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  options      String     @default("{}") // JSON เฉพาะปลายทาง เช่น aspect, maxDuration
+
+  @@unique([workflowId, connectionId])
+}
+
+model SourceItem {
+  id         String   @id @default(cuid())
+  workflowId String
+  workflow   Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  externalId String
+  title      String
+  url        String
+  duration   Int? // วินาที
+  renderedAt DateTime?
+  renderPath String?
+  createdAt  DateTime @default(now())
+
+  posts Post[]
+
+  @@unique([workflowId, externalId])
+}
+
+model Post {
+  id           String     @id @default(cuid())
+  workflowId   String
+  workflow     Workflow   @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  sourceItemId String
+  sourceItem   SourceItem @relation(fields: [sourceItemId], references: [id], onDelete: Cascade)
+  connectionId String
+  connection   Connection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  status      String    @default("queued") // queued | rendering | uploading | published | failed
+  remoteId    String?
+  url         String?
+  error       String?
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+}
+
+/// คิวงานแบบเก็บในฐานข้อมูล — ไม่ต้องใช้ Redis
+/// ถ้าต้องการสเกลสูงค่อยเปลี่ยนไปใช้ BullMQ โดยคงรูปแบบ payload เดิม
+model Job {
+  id          String    @id @default(cuid())
+  type        String // poll | render | publish
+  status      String    @default("queued") // queued | running | done | failed
+  payload     String    @default("{}")
+  runAt       DateTime  @default(now())
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(3)
+  lockedBy    String?
+  lockedAt    DateTime?
+  error       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([status, runAt])
+}

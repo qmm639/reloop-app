@@ -1,0 +1,68 @@
+# Deploy บน Render: New → Blueprint → เลือก repo นี้ แล้ว Render จะอ่านไฟล์นี้และตั้งค่าให้เอง
+# เซิร์ฟเวอร์ตัวเดียวกับที่รัน bot.qmm639.com ได้ ใช้คนละบริการแยกกัน
+services:
+  - type: web
+    name: reloop
+    runtime: docker
+    region: singapore
+    # การเรนเดอร์วิดีโอกิน CPU และ RAM มากกว่าบอทตอบคอมเมนต์
+    # เริ่มที่ 1 CPU / 2GB ก่อน ถ้าคลิปไม่ยาวมากลดลงได้ที่หน้า Dashboard
+    plan: 1c-2gb
+    healthCheckPath: /
+    autoDeploy: true
+
+    # ดิสก์ถาวร เก็บฐานข้อมูลและไฟล์วิดีโอที่เรนเดอร์แล้ว ไม่หายตอน deploy ใหม่
+    disk:
+      name: reloop-data
+      mountPath: /data
+      sizeGB: 5
+
+    envVars:
+      - key: DATABASE_URL
+        value: file:/data/reloop.db
+      - key: STORAGE_DIR
+        value: /data/storage
+      - key: APP_URL
+        value: https://app.qmm639.com
+      - key: NODE_ENV
+        value: production
+
+      # ความลับทั้งหมดกรอกในหน้า Render ตอนสร้างบริการ ไม่เก็บไว้ในไฟล์นี้
+      - key: AUTH_SECRET
+        generateValue: true
+      - key: TOKEN_ENC_KEY
+        sync: false
+
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+
+      - key: META_APP_ID
+        sync: false
+      - key: META_APP_SECRET
+        sync: false
+      - key: META_SCOPES
+        sync: false
+
+      - key: TIKTOK_CLIENT_KEY
+        sync: false
+      - key: TIKTOK_CLIENT_SECRET
+        sync: false
+
+      # ซับไทยอัตโนมัติ: ตั้ง off ไว้ก่อนได้ ค่อยเปิดเมื่อพร้อมจ่ายค่าถอดเสียง
+      - key: TRANSCRIBE_PROVIDER
+        value: "off"
+      - key: OPENAI_API_KEY
+        sync: false
+
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_PRICE_STARTER
+        sync: false
+      - key: STRIPE_PRICE_CREATOR
+        sync: false
+      - key: STRIPE_PRICE_AGENCY
+        sync: false
