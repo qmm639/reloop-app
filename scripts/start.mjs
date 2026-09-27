@@ -25,7 +25,7 @@ if (db.status !== 0) {
 
 const children = [];
 function run(name, cmd, args) {
-  const child = spawn(cmd, args, { stdio: "inherit", shell: process.platform === "win32" });
+  const child = spawn(cmd, args, { stdio: "inherit" });
   child.on("exit", (code) => {
     console.error(`[start] ${name} หยุดทำงาน (code ${code}) — ปิดคอนเทนเนอร์เพื่อให้ระบบรีสตาร์ทให้`);
     for (const c of children) if (c !== child) c.kill();
@@ -36,8 +36,11 @@ function run(name, cmd, args) {
 }
 
 const port = process.env.PORT ?? "3000";
-run("web", "npx", ["next", "start", "-p", port]);
-run("worker", "npx", ["tsx", "src/worker/index.ts"]);
+// เรียก node ตรง ๆ ไม่ผ่าน npx ประหยัดแรมไปราว 80MB (สำคัญเมื่อรันร่วมเครื่องกับบอท)
+run("web", process.execPath, ["node_modules/next/dist/bin/next", "start", "-p", port]);
+// worker ถูกคอมไพล์เป็น JS ตอน build แล้ว ไม่ต้องโหลด tsx ตอนรัน (ประหยัดแรมอีกราว 40MB)
+const workerArgs = fs.existsSync("dist/worker.mjs") ? ["dist/worker.mjs"] : ["--import", "tsx", "src/worker/index.ts"];
+run("worker", process.execPath, workerArgs);
 
 for (const sig of ["SIGTERM", "SIGINT"]) {
   process.on(sig, () => {
