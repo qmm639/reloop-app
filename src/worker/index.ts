@@ -162,12 +162,40 @@ async function handlePublish(postId: string) {
       data: { status: "published", remoteId: result.remoteId, url: result.url, publishedAt: new Date(), error: null },
     });
     log(`[publish] ${provider.label}: ${result.url ?? result.remoteId}`);
+    await removeRenderIfDone(post.sourceItemId);
   } catch (e) {
     await db.post.update({
       where: { id: post.id },
       data: { status: "failed", error: e instanceof Error ? e.message : String(e) },
     });
     throw e;
+  }
+}
+
+/** โพสต์ครบทุกปลายทางแล้ว ลบไฟล์วิดีโอทิ้งทันที ดิสก์จะได้ไม่เต็ม */
+async function removeRenderIfDone(sourceItemId: string) {
+  const pending = await db.post.count({ where: { sourceItemId, status: { not: "published" } } });
+  if (pending > 0) return;
+  const item = await db.sourceItem.findUnique({ where: { id: sourceItemId } });
+  if (!item?.renderPath) return;
+  fs.rmSync(item.renderPath, { force: true });
+  fs.rmSync(path.join(STORAGE, "work", item.id), { recursive: true, force: true });
+  await db.sourceItem.update({ where: { id: item.id }, data: { renderPath: null } });
+}
+
+/** กันดิสก์เต็ม: ลบไฟล์วิดีโอที่ค้างเกิน 24 ชั่วโมง (เช่นโพสต์ล้มเหลวจนหมดรอบลองใหม่) */
+let lastSweep = 0;
+function sweepOldFiles() {
+  if (Date.now() - lastSweep < 60 * 60_000) return;
+  lastSweep = Date.now();
+  const cutoff = Date.now() - 24 * 60 * 60_000;
+  for (const dir of ["renders", "work"]) {
+    const base = path.join(STORAGE, dir);
+    if (!fs.existsSync(base)) continue;
+    for (const name of fs.readdirSync(base)) {
+      const p = path.join(base, name);
+      if (fs.statSync(p).mtimeMs < cutoff) fs.rmSync(p, { recursive: true, force: true });
+    }
   }
 }
 
@@ -204,6 +232,7 @@ async function main() {
 
   for (;;) {
     await reclaimStale();
+    sweepOldFiles();
     const worked = await tick();
     if (!worked) await new Promise((r) => setTimeout(r, 3000));
   }
