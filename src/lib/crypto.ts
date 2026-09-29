@@ -8,8 +8,10 @@ function key(): Buffer {
   const raw = process.env.TOKEN_ENC_KEY;
   if (!raw) throw new Error("ยังไม่ได้ตั้งค่า TOKEN_ENC_KEY ใน .env");
   const buf = Buffer.from(raw, "base64");
-  if (buf.length !== 32) throw new Error("TOKEN_ENC_KEY ต้องเป็นคีย์ 32 ไบต์ในรูป base64");
-  return buf;
+  if (buf.length === 32) return buf;
+  // ค่าที่ไม่ใช่ base64 32 ไบต์พอดี (เช่นค่าที่ปุ่ม Generate ของ Render สร้าง) แปลงเป็นคีย์ 32 ไบต์ด้วย SHA-256
+  if (raw.length < 32) throw new Error("TOKEN_ENC_KEY สั้นเกินไป ต้องยาวอย่างน้อย 32 ตัวอักษร");
+  return crypto.createHash("sha256").update(raw).digest();
 }
 
 export function encrypt(plain: string): string {
