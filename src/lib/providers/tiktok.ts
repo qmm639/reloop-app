@@ -73,7 +73,7 @@ export const tiktok: Provider = {
       method: "POST",
       headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
       body: JSON.stringify({
-        post_info: { title: input.caption.slice(0, 2200), privacy_level: "PUBLIC_TO_EVERYONE" },
+        post_info: { title: input.caption.slice(0, 2200), privacy_level: (process.env.TIKTOK_PRIVACY_LEVEL ?? "SELF_ONLY") as any },
         source_info: { source: "FILE_UPLOAD", video_size: size, chunk_size: size, total_chunk_count: 1 },
       }),
     });
