@@ -9,8 +9,18 @@ export const providers: Record<ProviderId, Provider> = { youtube, tiktok, facebo
 
 export const isProviderId = (v: string): v is ProviderId => v in providers;
 
+export function getBaseUrl(req?: any): string {
+  if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, "");
+  if (req) {
+    const host = req.headers?.get("x-forwarded-host") || req.headers?.get("host");
+    const proto = req.headers?.get("x-forwarded-proto") || "https";
+    if (host) return `${proto}://${host}`;
+  }
+  return "https://app.qmm639.com";
+}
+
 export function redirectUri(provider: ProviderId) {
-  const base = process.env.APP_URL ?? "http://localhost:3000";
+  const base = getBaseUrl();
   return `${base}/api/connect/${provider}/callback`;
 }
 
