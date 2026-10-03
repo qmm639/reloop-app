@@ -1,10 +1,10 @@
 import fs from "node:fs";
 import { Provider, TokenSet, PublishInput, PublishResult, jsonFetch, ProviderError } from "./types";
 
-const SCOPES = process.env.TIKTOK_SCOPES || "user.info.basic,video.upload";
+const SCOPES = process.env.TIKTOK_SCOPES || "user.info.basic";
 const API = "https://open.tiktokapis.com/v2";
-const DEFAULT_CLIENT_KEY = "aw9v77ycxudd9yk4";
-const DEFAULT_CLIENT_SECRET = "Z25bdu7BKxdqkU9KhRXDr8CP0PiAT5YO";
+const DEFAULT_CLIENT_KEY = "awhvwd3kkkq48i0n";
+const DEFAULT_CLIENT_SECRET = "zCydsJxj6oTyvueo2qwdFRgavKrYtDJM";
 
 function getClientKey(): string {
   return process.env.TIKTOK_CLIENT_KEY || DEFAULT_CLIENT_KEY;
