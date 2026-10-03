@@ -3,6 +3,17 @@ import { Provider, TokenSet, PublishInput, PublishResult, jsonFetch, ProviderErr
 
 const SCOPES = "user.info.basic,video.upload,video.publish";
 const API = "https://open.tiktokapis.com/v2";
+const DEFAULT_CLIENT_KEY = "aw9v77ycxudd9yk4";
+const DEFAULT_CLIENT_SECRET = "Z25bdu7BKxdqkU9KhRXDr8CP0PiAT5YO";
+
+function getClientKey(): string {
+  return process.env.TIKTOK_CLIENT_KEY || DEFAULT_CLIENT_KEY;
+}
+
+function getClientSecret(): string {
+  return process.env.TIKTOK_CLIENT_SECRET || DEFAULT_CLIENT_SECRET;
+}
+
 
 export const tiktok: Provider = {
   id: "tiktok",
@@ -11,7 +22,7 @@ export const tiktok: Provider = {
 
   authUrl(state, redirectUri) {
     const p = new URLSearchParams({
-      client_key: process.env.TIKTOK_CLIENT_KEY ?? "",
+      client_key: getClientKey(),
       scope: SCOPES,
       response_type: "code",
       redirect_uri: redirectUri,
@@ -27,8 +38,8 @@ export const tiktok: Provider = {
         method: "POST",
         headers: { "content-type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({
-          client_key: process.env.TIKTOK_CLIENT_KEY ?? "",
-          client_secret: process.env.TIKTOK_CLIENT_SECRET ?? "",
+          client_key: getClientKey(),
+          client_secret: getClientSecret(),
           code,
           grant_type: "authorization_code",
           redirect_uri: redirectUri,
@@ -56,8 +67,8 @@ export const tiktok: Provider = {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
-        client_key: process.env.TIKTOK_CLIENT_KEY ?? "",
-        client_secret: process.env.TIKTOK_CLIENT_SECRET ?? "",
+        client_key: getClientKey(),
+        client_secret: getClientSecret(),
         grant_type: "refresh_token",
         refresh_token: refreshToken,
       }),
