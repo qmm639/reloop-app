@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import { Provider, TokenSet, PublishInput, PublishResult, jsonFetch, ProviderError } from "./types";
 
-const SCOPES = "user.info.basic,video.upload,video.publish";
+const SCOPES = process.env.TIKTOK_SCOPES || "user.info.basic,video.upload";
 const API = "https://open.tiktokapis.com/v2";
 const DEFAULT_CLIENT_KEY = "aw9v77ycxudd9yk4";
 const DEFAULT_CLIENT_SECRET = "Z25bdu7BKxdqkU9KhRXDr8CP0PiAT5YO";
