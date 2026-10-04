@@ -23,9 +23,21 @@ const SCOPES = (process.env.META_SCOPES ?? DEFAULT_SCOPES.join(","))
   .filter(Boolean)
   .join(",");
 
+
+const DEFAULT_META_APP_ID = "1284892290178396";
+const DEFAULT_META_APP_SECRET = "cd2ab6cbee326e5bb2cf6065cbd45eb2";
+
+function getMetaAppId(): string {
+  return process.env.META_APP_ID || DEFAULT_META_APP_ID;
+}
+
+function getMetaAppSecret(): string {
+  return process.env.META_APP_SECRET || DEFAULT_META_APP_SECRET;
+}
+
 function authUrl(state: string, redirectUri: string) {
   const p = new URLSearchParams({
-    client_id: process.env.META_APP_ID ?? "",
+    client_id: getMetaAppId(),
     redirect_uri: redirectUri,
     scope: SCOPES,
     response_type: "code",
@@ -39,8 +51,8 @@ async function exchangeMeta(code: string, redirectUri: string, want: "facebook" 
   const short = await jsonFetch<{ access_token: string }>(
     `${GRAPH}/oauth/access_token?` +
       new URLSearchParams({
-        client_id: process.env.META_APP_ID ?? "",
-        client_secret: process.env.META_APP_SECRET ?? "",
+        client_id: getMetaAppId(),
+        client_secret: getMetaAppSecret(),
         redirect_uri: redirectUri,
         code,
       }),
@@ -50,8 +62,8 @@ async function exchangeMeta(code: string, redirectUri: string, want: "facebook" 
     `${GRAPH}/oauth/access_token?` +
       new URLSearchParams({
         grant_type: "fb_exchange_token",
-        client_id: process.env.META_APP_ID ?? "",
-        client_secret: process.env.META_APP_SECRET ?? "",
+        client_id: getMetaAppId(),
+        client_secret: getMetaAppSecret(),
         fb_exchange_token: short.access_token,
       }),
   );
