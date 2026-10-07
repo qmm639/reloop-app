@@ -3,15 +3,23 @@ import { Provider, TokenSet, PublishInput, PublishResult, jsonFetch, ProviderErr
 
 const SCOPES = process.env.TIKTOK_SCOPES || "user.info.basic";
 const API = "https://open.tiktokapis.com/v2";
-const DEFAULT_CLIENT_KEY = "awhvwd3kkkq48i0n";
-const DEFAULT_CLIENT_SECRET = "zCydsJxj6oTyvueo2qwdFRgavKrYtDJM";
+const SANDBOX_CLIENT_KEY = "sbawa2d0jau9hbr8ht";
+const SANDBOX_CLIENT_SECRET = "9DRNeWrqtEqiimgJDycB0Jh77artZczk";
 
 function getClientKey(): string {
-  return process.env.TIKTOK_CLIENT_KEY || DEFAULT_CLIENT_KEY;
+  const envKey = process.env.TIKTOK_CLIENT_KEY;
+  if (!envKey || envKey === "awhvwd3kkkq48i0n") {
+    return SANDBOX_CLIENT_KEY;
+  }
+  return envKey;
 }
 
 function getClientSecret(): string {
-  return process.env.TIKTOK_CLIENT_SECRET || DEFAULT_CLIENT_SECRET;
+  const envSec = process.env.TIKTOK_CLIENT_SECRET;
+  if (!envSec || envSec === "zCydsJxj6oTyvueo2qwdFRgavKrYtDJM") {
+    return SANDBOX_CLIENT_SECRET;
+  }
+  return envSec;
 }
 
 
