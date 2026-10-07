@@ -4,9 +4,10 @@ import { getUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { encrypt } from "@/lib/crypto";
 import { isProviderId, providers, redirectUri, getBaseUrl } from "@/lib/providers";
+import { fetchMetaAccounts } from "@/lib/providers/meta";
 import { PLANS, PlanId } from "@/lib/plans";
 
-/** รับ code กลับจากแพลตฟอร์ม แลกเป็น token แล้วบันทึกแบบเข้ารหัส */
+/** รับ code กลับจากแพลตฟอร์ม แลกเป็น token แล้วพาไปหน้าเลือกเพจ หรือบันทึกแบบเข้ารหัส */
 export async function GET(req: NextRequest, ctx: { params: Promise<{ provider: string }> }) {
   const base = getBaseUrl(req);
   const user = await getUser();
@@ -29,6 +30,43 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ provider: s
     return NextResponse.redirect(new URL("/dashboard/connections?error=state", base));
   }
 
+  // สำหรับ Facebook และ Instagram: ดึงเพจทั้งหมด แล้วส่งไปหน้าจอ Pop-up ให้ผู้ใช้เลือกติ๊กเพจ
+  if (provider === "facebook" || provider === "instagram") {
+    try {
+      const { pages, expiresIn } = await fetchMetaAccounts(code, redirectUri(provider));
+      if (!pages || pages.length === 0) {
+        return NextResponse.redirect(new URL(`/dashboard/connections?error=${encodeURIComponent("ไม่พบเพจ Facebook ในบัญชีนี้ ต้องเป็นแอดมินเพจอย่างน้อย 1 เพจ")}`, base));
+      }
+
+      if (provider === "instagram") {
+        const igPages = pages.filter((p) => p.instagramId);
+        if (igPages.length === 0) {
+          return NextResponse.redirect(new URL(`/dashboard/connections?error=${encodeURIComponent("ไม่พบบัญชี Instagram Business ที่ผูกกับเพจ กรุณาผูกบัญชีก่อนใน Meta Business Suite")}`, base));
+        }
+      }
+
+      const pendingPayload = encrypt(JSON.stringify({
+        provider,
+        pages,
+        expiresAt: expiresIn ? Date.now() + expiresIn * 1000 : null,
+      }));
+
+      const res = NextResponse.redirect(new URL(`/dashboard/connections/select?provider=${provider}`, base));
+      res.cookies.set("pending_meta_selection", pendingPayload, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        maxAge: 600, // 10 minutes
+        path: "/",
+        sameSite: "lax",
+      });
+      return res;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "เชื่อมต่อไม่สำเร็จ";
+      return NextResponse.redirect(new URL(`/dashboard/connections?error=${encodeURIComponent(msg)}`, base));
+    }
+  }
+
+  // แพลตฟอร์มอื่นๆ (YouTube, TikTok) บันทึกทันทีตามปกติ
   try {
     const tokens = await providers[provider].exchange(code, redirectUri(provider));
 

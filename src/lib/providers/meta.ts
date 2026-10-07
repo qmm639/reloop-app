@@ -1,14 +1,9 @@
 import fs from "node:fs";
-import { Provider, TokenSet, PublishInput, PublishResult, jsonFetch, ProviderError } from "./types";
+import { Provider, PublishInput, PublishResult, TokenSet, jsonFetch, ProviderError } from "./types";
 
-const V = process.env.META_API_VERSION ?? "v21.0";
-const GRAPH = `https://graph.facebook.com/${V}`;
+const GRAPH = "https://graph.facebook.com/v21.0";
+const V = "v21.0";
 
-/**
- * สิทธิ์ที่ขอจาก Facebook
- * แอปจะขอ scope เหล่านี้ได้ก็ต่อเมื่อเพิ่ม use case ที่เกี่ยวข้องในหน้า App Dashboard แล้ว
- * ถ้าเจอ "Invalid Scopes" ให้ลดเหลือชุดพื้นฐานก่อนโดยตั้งค่า META_SCOPES ใน .env
- */
 const DEFAULT_SCOPES = [
   "pages_show_list",
   "pages_manage_posts",
@@ -22,7 +17,6 @@ const SCOPES = (process.env.META_SCOPES ?? DEFAULT_SCOPES.join(","))
   .map((s) => s.trim())
   .filter(Boolean)
   .join(",");
-
 
 const DEFAULT_META_APP_ID = "1284892290178396";
 const DEFAULT_META_APP_SECRET = "cd2ab6cbee326e5bb2cf6065cbd45eb2";
@@ -42,12 +36,24 @@ function authUrl(state: string, redirectUri: string) {
     scope: SCOPES,
     response_type: "code",
     state,
+    auth_type: "rerequest",
   });
   return `https://www.facebook.com/${V}/dialog/oauth?${p}`;
 }
 
-/** แลก code → user token → long-lived token → เลือกเพจแรกของผู้ใช้ */
-async function exchangeMeta(code: string, redirectUri: string, want: "facebook" | "instagram"): Promise<TokenSet> {
+export interface MetaAvailablePage {
+  id: string;
+  name: string;
+  accessToken: string;
+  instagramId?: string | null;
+  instagramUsername?: string | null;
+}
+
+/** ดึงรายชื่อเพจและ Instagram ทั้งหมดที่ผู้ใช้เป็นแอดมิน */
+export async function fetchMetaAccounts(code: string, redirectUri: string): Promise<{
+  pages: MetaAvailablePage[];
+  expiresIn?: number;
+}> {
   const short = await jsonFetch<{ access_token: string }>(
     `${GRAPH}/oauth/access_token?` +
       new URLSearchParams({
@@ -68,20 +74,35 @@ async function exchangeMeta(code: string, redirectUri: string, want: "facebook" 
       }),
   );
 
-  const pages = await jsonFetch<{ data: { id: string; name: string; access_token: string; instagram_business_account?: { id: string } }[] }>(
-    `${GRAPH}/me/accounts?fields=id,name,access_token,instagram_business_account&access_token=${long.access_token}`,
+  const pages = await jsonFetch<{ data: { id: string; name: string; access_token: string; instagram_business_account?: { id: string; username?: string } }[] }>(
+    `${GRAPH}/me/accounts?fields=id,name,access_token,instagram_business_account{id,username}&access_token=${long.access_token}`,
   );
-  const page = pages.data?.[0];
+
+  const list: MetaAvailablePage[] = (pages.data ?? []).map((p) => ({
+    id: p.id,
+    name: p.name,
+    accessToken: p.access_token,
+    instagramId: p.instagram_business_account?.id ?? null,
+    instagramUsername: p.instagram_business_account?.username ?? null,
+  }));
+
+  return { pages: list, expiresIn: long.expires_in };
+}
+
+/** แลก code -> fallback สำหรับ provider object มาตรฐาน */
+async function exchangeMeta(code: string, redirectUri: string, want: "facebook" | "instagram"): Promise<TokenSet> {
+  const { pages, expiresIn } = await fetchMetaAccounts(code, redirectUri);
+  const page = pages[0];
   if (!page) throw new ProviderError("ไม่พบเพจ Facebook ในบัญชีนี้ ต้องเป็นแอดมินเพจอย่างน้อย 1 เพจ");
 
   if (want === "instagram") {
-    const igId = page.instagram_business_account?.id;
+    const igId = page.instagramId;
     if (!igId) throw new ProviderError("เพจนี้ยังไม่ได้ผูกบัญชี Instagram แบบ Business");
     return {
       externalId: igId,
-      displayName: `Instagram ของเพจ ${page.name}`,
-      accessToken: page.access_token, // page token ใช้โพสต์ IG ได้
-      expiresAt: long.expires_in ? new Date(Date.now() + long.expires_in * 1000) : undefined,
+      displayName: page.instagramUsername ? `@${page.instagramUsername} (${page.name})` : `Instagram ของเพจ ${page.name}`,
+      accessToken: page.accessToken,
+      expiresAt: expiresIn ? new Date(Date.now() + expiresIn * 1000) : undefined,
       scopes: SCOPES,
       meta: { pageId: page.id },
     };
@@ -90,10 +111,10 @@ async function exchangeMeta(code: string, redirectUri: string, want: "facebook" 
   return {
     externalId: page.id,
     displayName: page.name,
-    accessToken: page.access_token, // page access token อายุยาว
-    expiresAt: long.expires_in ? new Date(Date.now() + long.expires_in * 1000) : undefined,
+    accessToken: page.accessToken,
+    expiresAt: expiresIn ? new Date(Date.now() + expiresIn * 1000) : undefined,
     scopes: SCOPES,
-    meta: { instagramId: page.instagram_business_account?.id ?? null },
+    meta: { instagramId: page.instagramId ?? null },
   };
 }
 
