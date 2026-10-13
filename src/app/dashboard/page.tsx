@@ -3,6 +3,7 @@ import { getUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { PLANS, PlanId, quotaLeft } from "@/lib/plans";
 import RunButton from "@/components/RunButton";
+import WorkflowActions from "@/components/WorkflowActions";
 
 export const dynamic = "force-dynamic";
 
@@ -63,12 +64,20 @@ export default async function Overview() {
             <tbody>
               {workflows.map((w) => (
                 <tr key={w.id}>
-                  <td><b>{w.name}</b></td>
+                  <td>
+                    <b>{w.name}</b>
+                    {!w.active && <div><span className="pill err">หยุดอยู่</span></div>}
+                  </td>
                   <td className="muted">{w.sourceConnection?.displayName ?? w.sourceKind}</td>
                   <td className="muted">{w.destinations.length} ช่อง</td>
                   <td className="mono">{w.checkEvery} นาที</td>
                   <td className="mono muted">{w.lastCheckedAt ? w.lastCheckedAt.toLocaleString("th-TH") : "ยังไม่เคย"}</td>
-                  <td><RunButton workflowId={w.id} /></td>
+                  <td>
+                    <div className="grid" style={{ gap: 6 }}>
+                      {w.active && <RunButton workflowId={w.id} />}
+                      <WorkflowActions workflowId={w.id} active={w.active} name={w.name} />
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -92,7 +101,8 @@ export default async function Overview() {
                     <span className={`pill ${p.status === "published" ? "ok" : p.status === "failed" ? "err" : ""}`}>
                       {p.status === "published" ? "โพสต์แล้ว" : p.status === "failed" ? "ล้มเหลว" : "กำลังดำเนินการ"}
                     </span>
-                    {p.error && <div className="mono" style={{ color: "var(--err)" }}>{p.error.slice(0, 90)}</div>}
+                    {p.error && <div className="mono" title={p.error} style={{ color: "var(--err)" }}>{p.error.slice(0, 160)}</div>}
+                    {p.url && p.status === "published" && <div><a className="mono" href={p.url} target="_blank" rel="noreferrer">เปิดดูโพสต์</a></div>}
                   </td>
                   <td className="mono muted">{(p.publishedAt ?? p.createdAt).toLocaleString("th-TH")}</td>
                 </tr>

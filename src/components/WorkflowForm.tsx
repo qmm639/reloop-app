@@ -5,14 +5,21 @@ import { useRouter } from "next/navigation";
 
 type Conn = { id: string; provider: string; displayName: string; externalId: string };
 
+// แสดงเฉพาะกฎที่ระบบทำได้จริงตอนนี้ — โลโก้ยังไม่มีหน้าอัปโหลด และตัดไฮไลต์ยังไม่ได้ทำ
 const RULES = [
-  { key: "crop", label: "ตัดเป็นแนวตั้ง 9:16", hint: "วางคลิปกลางเฟรม พื้นหลังเบลอจากคลิปเดียวกัน" },
-  { key: "subtitle", label: "ใส่ซับไทยอัตโนมัติ", hint: "ต้องตั้งค่า TRANSCRIBE_PROVIDER และอยู่ในแพ็กเกจที่รองรับ" },
-  { key: "logo", label: "ติดโลโก้แบรนด์", hint: "ใช้ไฟล์ storage/assets/<user-id>-logo.png" },
-  { key: "highlights", label: "ตัดไฮไลต์เป็นคลิปสั้น", hint: "แยกช่วงที่น่าสนใจจากคลิปยาว" },
+  { key: "crop", label: "ตัดเป็นแนวตั้ง 9:16", hint: "วางคลิปกลางเฟรม พื้นหลังเบลอจากคลิปเดียวกัน", needs: "render" },
+  { key: "subtitle", label: "ใส่ซับไทยอัตโนมัติ", hint: "เฉพาะแพ็กเกจที่รองรับซับ", needs: "subtitle" },
 ] as const;
 
-export default function WorkflowForm({ connections }: { connections: Conn[] }) {
+export default function WorkflowForm({
+  connections,
+  renderEnabled,
+  subtitleEnabled,
+}: {
+  connections: Conn[];
+  renderEnabled: boolean;
+  subtitleEnabled: boolean;
+}) {
   const router = useRouter();
   const sources = connections.filter((c) => c.provider === "youtube" || c.provider === "facebook");
   const [sourceId, setSourceId] = useState(sources[0]?.id ?? "");
@@ -84,20 +91,30 @@ export default function WorkflowForm({ connections }: { connections: Conn[] }) {
       <fieldset style={{ border: "1px solid var(--line)", borderRadius: 12, padding: 14 }}>
         <legend className="mono muted">กฎการแปลง</legend>
         <div className="grid" style={{ gap: 8 }}>
-          {RULES.map((r) => (
-            <label key={r.key} className="row" style={{ gap: 10, alignItems: "flex-start" }}>
-              <input
-                type="checkbox"
-                style={{ width: 18, height: 18, marginTop: 3 }}
-                checked={rules[r.key]}
-                onChange={(e) => setRules({ ...rules, [r.key]: e.target.checked })}
-              />
-              <span>
-                <b style={{ fontWeight: 600 }}>{r.label}</b>
-                <div className="muted" style={{ fontSize: 12.5 }}>{r.hint}</div>
-              </span>
-            </label>
-          ))}
+          {!renderEnabled && (
+            <p className="muted" style={{ fontSize: 13 }}>
+              ตอนนี้ระบบโพสต์คลิปตามต้นฉบับ ยังไม่เปิดการตัดต่อ คลิปแนวตั้งยาวไม่เกิน 90 วินาทีจะลง Facebook เป็น Reels
+              คลิปแบบอื่นจะลงเป็นวิดีโอปกติของเพจ
+            </p>
+          )}
+          {RULES.map((r) => {
+            const available = renderEnabled && (r.needs !== "subtitle" || subtitleEnabled);
+            return (
+              <label key={r.key} className="row" style={{ gap: 10, alignItems: "flex-start", opacity: available ? 1 : 0.5 }}>
+                <input
+                  type="checkbox"
+                  style={{ width: 18, height: 18, marginTop: 3 }}
+                  disabled={!available}
+                  checked={available && rules[r.key]}
+                  onChange={(e) => setRules({ ...rules, [r.key]: e.target.checked })}
+                />
+                <span>
+                  <b style={{ fontWeight: 600 }}>{r.label}</b>
+                  <div className="muted" style={{ fontSize: 12.5 }}>{available ? r.hint : "ยังไม่เปิดใช้งาน"}</div>
+                </span>
+              </label>
+            );
+          })}
         </div>
       </fieldset>
 

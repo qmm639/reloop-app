@@ -1,5 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import type { ReadableStream as NodeWebStream } from "node:stream/web";
 import { run } from "./video";
 
 /**
@@ -12,10 +15,13 @@ export async function fetchSource(url: string, workDir: string): Promise<string>
   fs.mkdirSync(workDir, { recursive: true });
   const out = path.join(workDir, "source.mp4");
 
-  if (/^https?:\/\/[^ ]+\.(mp4|mov|m4v)(\?|$)/i.test(url)) {
+  // ลิงก์ไฟล์ตรง รวมถึงลิงก์จาก CDN ของ Facebook ที่ได้จากฟิลด์ source ของวิดีโอในเพจ
+  const direct = /^https?:\/\/[^ ]+\.(mp4|mov|m4v)(\?|$)/i.test(url) || /^https?:\/\/[^/ ]*fbcdn\.net\//i.test(url);
+  if (direct) {
     const res = await fetch(url);
-    if (!res.ok) throw new Error(`ดาวน์โหลดไฟล์ต้นฉบับไม่สำเร็จ (${res.status})`);
-    fs.writeFileSync(out, Buffer.from(await res.arrayBuffer()));
+    if (!res.ok || !res.body) throw new Error(`ดาวน์โหลดไฟล์ต้นฉบับไม่สำเร็จ (${res.status})`);
+    // เขียนลงดิสก์ทีละส่วน ไม่โหลดทั้งไฟล์เข้าแรม (คลิปยาวหลักร้อย MB จะทำให้เครื่องเล็กล่ม)
+    await pipeline(Readable.fromWeb(res.body as unknown as NodeWebStream), fs.createWriteStream(out));
     return out;
   }
 

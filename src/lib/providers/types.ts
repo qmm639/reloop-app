@@ -15,6 +15,10 @@ export type PublishInput = {
   publicUrl?: string; // บาง API (Instagram) ต้องการ URL สาธารณะแทนการอัปโหลดไฟล์
   title: string;
   caption: string;
+  /** ขนาดและความยาวของไฟล์ (worker วัดด้วย ffprobe) — ไม่มีค่าถ้าวัดไม่ได้ */
+  width?: number;
+  height?: number;
+  duration?: number;
 };
 
 export type PublishResult = { remoteId: string; url?: string };
@@ -34,6 +38,11 @@ export interface Provider {
   authUrl(state: string, redirectUri: string): string;
   /** แลก code เป็น token + ข้อมูลบัญชี */
   exchange(code: string, redirectUri: string): Promise<TokenSet>;
+  /**
+   * แลก code แล้วคืนทุกบัญชีที่ผู้ใช้อนุญาตในครั้งเดียว (เช่นเลือกหลายเพจในหน้าขอสิทธิ์ของ Facebook)
+   * ถ้าแพลตฟอร์มไม่มีแนวคิดนี้ไม่ต้องมี ระบบจะใช้ exchange แทน
+   */
+  exchangeAll?(code: string, redirectUri: string): Promise<TokenSet[]>;
   /** ต่ออายุ token ที่หมดอายุ (คืน null ถ้าแพลตฟอร์มไม่มี refresh token) */
   refresh?(refreshToken: string): Promise<Partial<TokenSet> | null>;
   /** อ่านรายการคลิปใหม่จากช่องต้นทาง */

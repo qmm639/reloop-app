@@ -118,6 +118,34 @@ async function exchangeMeta(code: string, redirectUri: string, want: "facebook" 
   };
 }
 
+/**
+ * Reels ของเพจรับเฉพาะคลิปแนวตั้ง 9:16 ขนาดอย่างน้อย 540x960 ยาว 3–90 วินาที
+ * (ตามตาราง Video Specifications ในเอกสาร Reels Publishing API)
+ * คลิปที่ไม่เข้าเกณฑ์ หรือวัดขนาดไม่ได้ ให้โพสต์เป็นวิดีโอธรรมดาของเพจแทน
+ */
+export function fitsReelSpec(input: Pick<PublishInput, "width" | "height" | "duration">): boolean {
+  const { width, height, duration } = input;
+  if (!width || !height || !duration) return false;
+  const vertical = Math.abs(width / height - 9 / 16) < 0.02;
+  return vertical && width >= 540 && height >= 960 && duration >= 3 && duration <= 90;
+}
+
+/** โพสต์เป็นวิดีโอธรรมดาของเพจ — รับได้ทุกสัดส่วนและคลิปยาว */
+async function publishPageVideo(accessToken: string, pageId: string, input: PublishInput): Promise<PublishResult> {
+  const form = new FormData();
+  form.set("access_token", accessToken);
+  form.set("title", input.title.slice(0, 250));
+  form.set("description", input.caption.slice(0, 5000));
+  // openAsBlob อ้างไฟล์บนดิสก์โดยไม่โหลดทั้งไฟล์เข้าแรม
+  form.set("source", await fs.openAsBlob(input.filePath, { type: "video/mp4" }), "video.mp4");
+
+  const res = await jsonFetch<{ id: string }>(`https://graph-video.facebook.com/${V}/${pageId}/videos`, {
+    method: "POST",
+    body: form,
+  });
+  return { remoteId: res.id, url: `https://www.facebook.com/${pageId}/videos/${res.id}` };
+}
+
 export const facebook: Provider = {
   id: "facebook",
   label: "Facebook Page",
@@ -126,8 +154,9 @@ export const facebook: Provider = {
   exchange: (code, redirectUri) => exchangeMeta(code, redirectUri, "facebook"),
 
   async listNew(accessToken, pageId, sinceId) {
-    const res = await jsonFetch<{ data: { id: string; title?: string; description?: string; permalink_url?: string; created_time: string }[] }>(
-      `${GRAPH}/${pageId}/videos?fields=id,title,description,permalink_url,created_time&limit=10&access_token=${accessToken}`,
+    // source คือลิงก์ไฟล์ตรงของวิดีโอที่เพจเป็นเจ้าของ ดาวน์โหลดได้เลยโดยไม่ต้องพึ่ง yt-dlp
+    const res = await jsonFetch<{ data: { id: string; title?: string; description?: string; permalink_url?: string; source?: string; created_time: string }[] }>(
+      `${GRAPH}/${pageId}/videos?fields=id,title,description,permalink_url,source,created_time&limit=10&access_token=${accessToken}`,
     );
     const items = [];
     for (const v of res.data ?? []) {
@@ -135,15 +164,17 @@ export const facebook: Provider = {
       items.push({
         externalId: v.id,
         title: v.title ?? v.description?.slice(0, 80) ?? "วิดีโอจากเพจ",
-        url: v.permalink_url ?? `https://facebook.com/${v.id}`,
+        url: v.source ?? (v.permalink_url ? new URL(v.permalink_url, "https://www.facebook.com").toString() : `https://www.facebook.com/${v.id}`),
         publishedAt: new Date(v.created_time),
       });
     }
     return items;
   },
 
-  /** Reels ของเพจ: start → upload ไฟล์ → finish */
+  /** คลิปที่เข้าเกณฑ์ Reels: start → upload ไฟล์ → finish · นอกนั้นโพสต์เป็นวิดีโอธรรมดา */
   async publish(accessToken, pageId, input: PublishInput): Promise<PublishResult> {
+    if (!fitsReelSpec(input)) return publishPageVideo(accessToken, pageId, input);
+
     const start = await jsonFetch<{ video_id: string; upload_url: string }>(
       `${GRAPH}/${pageId}/video_reels`,
       {

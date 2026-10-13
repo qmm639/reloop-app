@@ -103,7 +103,11 @@ export const youtube: Provider = {
           "x-upload-content-type": "video/mp4",
         },
         body: JSON.stringify({
-          snippet: { title: input.title.slice(0, 100), description: input.caption.slice(0, 5000) },
+          // YouTube ไม่รับ < > ในชื่อและคำอธิบาย และชื่อคลิปห้ามว่าง
+          snippet: {
+            title: input.title.replace(/[<>]/g, "").trim().slice(0, 100) || "คลิปใหม่",
+            description: input.caption.replace(/[<>]/g, "").slice(0, 5000),
+          },
           status: { privacyStatus: "public", selfDeclaredMadeForKids: false },
         }),
       },

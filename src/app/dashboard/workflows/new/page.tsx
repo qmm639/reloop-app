@@ -29,7 +29,11 @@ export default async function NewWorkflow() {
         <h1 style={{ fontSize: 26 }}>สร้างเวิร์กโฟลว์</h1>
         <p className="muted">เลือกต้นทาง ตั้งกฎการแปลง แล้วเลือกปลายทางที่จะให้โพสต์อัตโนมัติ</p>
       </div>
-      <WorkflowForm connections={connections} />
+      <WorkflowForm
+        connections={connections}
+        renderEnabled={process.env.RELOOP_RENDER_ENABLED === "1"}
+        subtitleEnabled={Boolean(process.env.TRANSCRIBE_PROVIDER) && process.env.TRANSCRIBE_PROVIDER !== "off"}
+      />
     </div>
   );
 }
