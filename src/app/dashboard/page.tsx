@@ -25,7 +25,7 @@ export default async function Overview() {
       orderBy: { createdAt: "desc" },
       take: 10,
     }),
-    db.job.count({ where: { status: "queued" } }),
+    db.job.count({ where: { status: { in: ["queued", "running"] }, runAt: { lte: new Date() } } }),
   ]);
 
   const stats = [

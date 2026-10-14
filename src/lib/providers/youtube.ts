@@ -115,12 +115,11 @@ export const youtube: Provider = {
     const uploadUrl = start.headers.get("location");
     if (!start.ok || !uploadUrl) throw new ProviderError("ขอ URL อัปโหลดจาก YouTube ไม่สำเร็จ", start.status, await start.text());
 
+    const blob = await fs.openAsBlob(input.filePath, { type: "video/mp4" });
     const res = await fetch(uploadUrl, {
       method: "PUT",
       headers: { "content-type": "video/mp4", "content-length": String(size) },
-      body: fs.createReadStream(input.filePath) as unknown as BodyInit,
-      // @ts-expect-error duplex จำเป็นสำหรับการสตรีมไฟล์ใน Node fetch
-      duplex: "half",
+      body: blob,
     });
     if (!res.ok) throw new ProviderError("อัปโหลดคลิปขึ้น YouTube ไม่สำเร็จ", res.status, await res.text());
     const data = (await res.json()) as { id: string };

@@ -67,6 +67,11 @@ export async function jsonFetch<T>(url: string, init?: RequestInit): Promise<T> 
   } catch {
     body = text;
   }
-  if (!res.ok) throw new ProviderError(`เรียก ${url} ไม่สำเร็จ (${res.status})`, res.status, body);
+  if (!res.ok) {
+    const safeUrl = url.replace(/([?&](?:client_secret|access_token|fb_exchange_token|refresh_token)=)[^&]+/gi, "$1***");
+    const b = body as Record<string, any> | null;
+    const detail = b?.error?.message || b?.error_description || (typeof b?.error === "string" ? b.error : "") || (typeof b?.message === "string" ? b.message : "");
+    throw new ProviderError(`เรียก ${safeUrl} ไม่สำเร็จ (${res.status})${detail ? `: ${detail}` : ""}`, res.status, body);
+  }
   return body as T;
 }

@@ -4,7 +4,7 @@ import { getUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { encrypt, decrypt } from "@/lib/crypto";
 import { getBaseUrl } from "@/lib/providers";
-import { MetaAvailablePage } from "@/lib/providers/meta";
+import { MetaAvailablePage, fetchMetaPagesByToken } from "@/lib/providers/meta";
 import { PLANS, PlanId } from "@/lib/plans";
 
 export async function POST(req: NextRequest) {
@@ -20,7 +20,8 @@ export async function POST(req: NextRequest) {
 
   let data: {
     provider: "facebook" | "instagram";
-    pages: MetaAvailablePage[];
+    userAccessToken?: string;
+    pages?: MetaAvailablePage[];
     expiresAt?: number | null;
   };
 
@@ -39,8 +40,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.redirect(new URL("/dashboard/connections?error=no_pages_selected", base));
   }
 
+  const pages = data.pages ?? (data.userAccessToken ? await fetchMetaPagesByToken(data.userAccessToken) : []);
   const isIg = provider === "instagram";
-  const matchedPages = data.pages.filter((p) =>
+  const matchedPages = pages.filter((p) =>
     isIg ? p.instagramId && selectedIds.has(p.instagramId) : selectedIds.has(p.id)
   );
 

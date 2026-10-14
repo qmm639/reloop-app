@@ -97,6 +97,19 @@ async function handleRender(sourceItemId: string) {
   const outPath = path.join(STORAGE, "renders", `${item.id}.mp4`);
   fs.mkdirSync(workDir, { recursive: true });
 
+  const posts = [];
+  for (const dest of wf.destinations) {
+    const existing = await db.post.findFirst({
+      where: { workflowId: wf.id, sourceItemId: item.id, connectionId: dest.connectionId },
+    });
+    const post = existing
+      ? await db.post.update({ where: { id: existing.id }, data: { status: "rendering", error: null } })
+      : await db.post.create({
+          data: { workflowId: wf.id, sourceItemId: item.id, connectionId: dest.connectionId, status: "rendering" },
+        });
+    posts.push(post);
+  }
+
   try {
     log(`[render] ${item.title}`);
     const source = await fetchSource(item.url, workDir);
@@ -125,12 +138,20 @@ async function handleRender(sourceItemId: string) {
     });
     await db.user.update({ where: { id: user.id }, data: { clipsUsed: { increment: 1 } } });
 
-    for (const dest of wf.destinations) {
-      const post = await db.post.create({
-        data: { workflowId: wf.id, sourceItemId: item.id, connectionId: dest.connectionId, status: "queued" },
+    for (const post of posts) {
+      await db.post.update({
+        where: { id: post.id },
+        data: { status: "queued", error: null },
       });
       await enqueue("publish", { postId: post.id }, { runAt: scheduleFor(wf.schedule) });
     }
+  } catch (e) {
+    const errMsg = e instanceof Error ? e.message : String(e);
+    await db.post.updateMany({
+      where: { id: { in: posts.map((p) => p.id) } },
+      data: { status: "failed", error: errMsg },
+    });
+    throw e;
   } finally {
     fs.rmSync(path.join(workDir, "source.mp4"), { force: true }); // เก็บเฉพาะไฟล์ที่เรนเดอร์แล้ว
   }
@@ -201,7 +222,7 @@ async function handlePublish(postId: string) {
     log(`[publish] ${provider.label}: ${result.url ?? result.remoteId}`);
     await removeRenderIfDone(post.sourceItemId);
   } catch (e) {
-    await db.post.update({
+    await db.post.updateMany({
       where: { id: post.id },
       data: { status: "failed", error: e instanceof Error ? e.message : String(e) },
     });

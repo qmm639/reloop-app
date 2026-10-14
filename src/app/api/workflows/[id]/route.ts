@@ -20,7 +20,11 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
 
   await db.workflow.update({ where: { id: wf.id }, data: { active: parsed.data.active } });
   // รอบตรวจจะหยุดเองเมื่อเวิร์กโฟลว์ถูกปิด ตอนเปิดกลับต้องตั้งรอบให้ใหม่
-  if (parsed.data.active && !wf.active) await enqueue("poll", { workflowId: wf.id });
+  if (parsed.data.active && !wf.active) {
+    await enqueue("poll", { workflowId: wf.id });
+  } else if (!parsed.data.active) {
+    await db.job.deleteMany({ where: { type: "poll", status: "queued", payload: { contains: wf.id } } });
+  }
 
   return NextResponse.json({ ok: true, active: parsed.data.active });
 }
@@ -34,6 +38,7 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: str
   const wf = await db.workflow.findFirst({ where: { id, userId: user.id } });
   if (!wf) return NextResponse.json({ error: "ไม่พบเวิร์กโฟลว์" }, { status: 404 });
 
+  await db.job.deleteMany({ where: { type: "poll", status: "queued", payload: { contains: wf.id } } });
   await db.workflow.delete({ where: { id: wf.id } });
   return NextResponse.json({ ok: true });
 }

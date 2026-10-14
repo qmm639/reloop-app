@@ -42,7 +42,7 @@ export const tiktok: Provider = {
   },
 
   async exchange(code, redirectUri): Promise<TokenSet> {
-    const token = await jsonFetch<{ access_token: string; refresh_token: string; expires_in: number; open_id: string; scope: string }>(
+    const token = await jsonFetch<{ access_token?: string; refresh_token?: string; expires_in?: number; open_id?: string; scope?: string; error?: string; error_description?: string }>(
       `${API}/oauth/token/`,
       {
         method: "POST",
@@ -56,6 +56,9 @@ export const tiktok: Provider = {
         }),
       },
     );
+    if (token.error || !token.access_token || !token.open_id) {
+      throw new ProviderError(`แลกโทเคน TikTok ไม่สำเร็จ: ${token.error_description || token.error || "ไม่มี access_token"}`);
+    }
 
     const info = await jsonFetch<{ data: { user: { display_name: string; open_id: string } } }>(
       `${API}/user/info/?fields=open_id,display_name`,
@@ -67,13 +70,13 @@ export const tiktok: Provider = {
       displayName: info.data.user.display_name,
       accessToken: token.access_token,
       refreshToken: token.refresh_token,
-      expiresAt: new Date(Date.now() + token.expires_in * 1000),
+      expiresAt: new Date(Date.now() + (token.expires_in ?? 86400) * 1000),
       scopes: token.scope,
     };
   },
 
   async refresh(refreshToken) {
-    const t = await jsonFetch<{ access_token: string; refresh_token: string; expires_in: number }>(`${API}/oauth/token/`, {
+    const t = await jsonFetch<{ access_token?: string; refresh_token?: string; expires_in?: number; error?: string; error_description?: string }>(`${API}/oauth/token/`, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
@@ -83,7 +86,10 @@ export const tiktok: Provider = {
         refresh_token: refreshToken,
       }),
     });
-    return { accessToken: t.access_token, refreshToken: t.refresh_token, expiresAt: new Date(Date.now() + t.expires_in * 1000) };
+    if (t.error || !t.access_token) {
+      throw new ProviderError(`ต่ออายุโทเคน TikTok ไม่สำเร็จ: ${t.error_description || t.error || "ไม่มี access_token"}`);
+    }
+    return { accessToken: t.access_token, refreshToken: t.refresh_token, expiresAt: new Date(Date.now() + (t.expires_in ?? 86400) * 1000) };
   },
 
   /**
@@ -136,12 +142,11 @@ export const tiktok: Provider = {
       }),
     });
 
+    const blob = await fs.openAsBlob(input.filePath, { type: "video/mp4" });
     const put = await fetch(init.data.upload_url, {
       method: "PUT",
-      headers: { "content-type": "video/mp4", "content-range": `bytes 0-${size - 1}/${size}` },
-      body: fs.createReadStream(input.filePath) as unknown as BodyInit,
-      // @ts-expect-error duplex จำเป็นสำหรับการสตรีมไฟล์ใน Node fetch
-      duplex: "half",
+      headers: { "content-type": "video/mp4", "content-length": String(size), "content-range": `bytes 0-${size - 1}/${size}` },
+      body: blob,
     });
     if (!put.ok) throw new ProviderError("อัปโหลดไฟล์ไป TikTok ไม่สำเร็จ", put.status, await put.text());
 

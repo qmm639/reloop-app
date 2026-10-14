@@ -12,13 +12,13 @@ const DEFAULT_SCOPES = [
   "instagram_content_publish",
   "business_management",
 ];
-const SCOPES = (process.env.META_SCOPES ?? DEFAULT_SCOPES.join(","))
+const SCOPES = (process.env.META_SCOPES || DEFAULT_SCOPES.join(","))
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean)
   .join(",");
 
-const DEFAULT_META_APP_ID = "1284892290178396";
+const DEFAULT_META_APP_ID = "2146234839534518";
 const DEFAULT_META_APP_SECRET = "cd2ab6cbee326e5bb2cf6065cbd45eb2";
 
 function getMetaAppId(): string {
@@ -49,9 +49,25 @@ export interface MetaAvailablePage {
   instagramUsername?: string | null;
 }
 
+/** ดึงรายชื่อเพจและ Instagram ทั้งหมดจาก user access token */
+export async function fetchMetaPagesByToken(userAccessToken: string): Promise<MetaAvailablePage[]> {
+  const pages = await jsonFetch<{ data: { id: string; name: string; access_token: string; instagram_business_account?: { id: string; username?: string } }[] }>(
+    `${GRAPH}/me/accounts?fields=id,name,access_token,instagram_business_account{id,username}&limit=100&access_token=${userAccessToken}`,
+  );
+
+  return (pages.data ?? []).map((p) => ({
+    id: p.id,
+    name: p.name,
+    accessToken: p.access_token,
+    instagramId: p.instagram_business_account?.id ?? null,
+    instagramUsername: p.instagram_business_account?.username ?? null,
+  }));
+}
+
 /** ดึงรายชื่อเพจและ Instagram ทั้งหมดที่ผู้ใช้เป็นแอดมิน */
 export async function fetchMetaAccounts(code: string, redirectUri: string): Promise<{
   pages: MetaAvailablePage[];
+  userAccessToken: string;
   expiresIn?: number;
 }> {
   const short = await jsonFetch<{ access_token: string }>(
@@ -74,19 +90,9 @@ export async function fetchMetaAccounts(code: string, redirectUri: string): Prom
       }),
   );
 
-  const pages = await jsonFetch<{ data: { id: string; name: string; access_token: string; instagram_business_account?: { id: string; username?: string } }[] }>(
-    `${GRAPH}/me/accounts?fields=id,name,access_token,instagram_business_account{id,username}&access_token=${long.access_token}`,
-  );
+  const list = await fetchMetaPagesByToken(long.access_token);
 
-  const list: MetaAvailablePage[] = (pages.data ?? []).map((p) => ({
-    id: p.id,
-    name: p.name,
-    accessToken: p.access_token,
-    instagramId: p.instagram_business_account?.id ?? null,
-    instagramUsername: p.instagram_business_account?.username ?? null,
-  }));
-
-  return { pages: list, expiresIn: long.expires_in };
+  return { pages: list, userAccessToken: long.access_token, expiresIn: long.expires_in };
 }
 
 /** แลก code -> fallback สำหรับ provider object มาตรฐาน */
@@ -185,6 +191,7 @@ export const facebook: Provider = {
     );
 
     const size = fs.statSync(input.filePath).size;
+    const blob = await fs.openAsBlob(input.filePath, { type: "application/octet-stream" });
     const up = await fetch(start.upload_url, {
       method: "POST",
       headers: {
@@ -193,9 +200,7 @@ export const facebook: Provider = {
         file_size: String(size),
         "content-type": "application/octet-stream",
       },
-      body: fs.createReadStream(input.filePath) as unknown as BodyInit,
-      // @ts-expect-error duplex จำเป็นสำหรับการสตรีมไฟล์ใน Node fetch
-      duplex: "half",
+      body: blob,
     });
     if (!up.ok) throw new ProviderError("อัปโหลดไฟล์ไป Facebook ไม่สำเร็จ", up.status, await up.text());
 

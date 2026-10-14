@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getUser } from "@/lib/auth";
 import { decrypt } from "@/lib/crypto";
+import { fetchMetaPagesByToken } from "@/lib/providers/meta";
 import { SelectPagesClient } from "./SelectPagesClient";
 
 export const dynamic = "force-dynamic";
@@ -22,7 +23,8 @@ export default async function SelectPagesPage({
 
   let data: {
     provider: "facebook" | "instagram";
-    pages: { id: string; name: string; instagramId?: string | null; instagramUsername?: string | null }[];
+    userAccessToken?: string;
+    pages?: { id: string; name: string; instagramId?: string | null; instagramUsername?: string | null }[];
     expiresAt?: number | null;
   };
 
@@ -32,7 +34,8 @@ export default async function SelectPagesPage({
     redirect("/dashboard/connections?error=invalid_selection_data");
   }
 
-  const { provider, pages } = data;
+  const { provider } = data;
+  const pages = data.pages ?? (data.userAccessToken ? await fetchMetaPagesByToken(data.userAccessToken) : []);
   const isIg = provider === "instagram";
   const items = isIg ? pages.filter((p) => p.instagramId) : pages;
 

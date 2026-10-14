@@ -26,7 +26,8 @@ export async function fetchSource(url: string, workDir: string): Promise<string>
   }
 
   const ytdlp = process.env.YTDLP_PATH ?? "yt-dlp";
-  await run(ytdlp, ["-f", "bv*[height<=1080]+ba/b[height<=1080]", "--merge-output-format", "mp4", "-o", out, url]);
+  // คลิปแนวตั้ง 9:16 ระดับ 1080p มีขนาด 1080x1920 (height=1920) จึงต้องเปิดเพดานถึง 1920 พร้อม fallback กรณีไม่มี metadata ขนาด
+  await run(ytdlp, ["-f", "bv*[height<=1920]+ba/b[height<=1920]/bv*+ba/b", "--merge-output-format", "mp4", "-o", out, url]);
   if (!fs.existsSync(out)) throw new Error("ดึงไฟล์ต้นฉบับไม่สำเร็จ");
   return out;
 }

@@ -33,7 +33,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ provider: s
   // สำหรับ Facebook และ Instagram: ดึงเพจทั้งหมด แล้วส่งไปหน้าจอ Pop-up ให้ผู้ใช้เลือกติ๊กเพจ
   if (provider === "facebook" || provider === "instagram") {
     try {
-      const { pages, expiresIn } = await fetchMetaAccounts(code, redirectUri(provider));
+      const { pages, userAccessToken, expiresIn } = await fetchMetaAccounts(code, redirectUri(provider));
       if (!pages || pages.length === 0) {
         return NextResponse.redirect(new URL(`/dashboard/connections?error=${encodeURIComponent("ไม่พบเพจ Facebook ในบัญชีนี้ ต้องเป็นแอดมินเพจอย่างน้อย 1 เพจ")}`, base));
       }
@@ -47,7 +47,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ provider: s
 
       const pendingPayload = encrypt(JSON.stringify({
         provider,
-        pages,
+        userAccessToken,
         expiresAt: expiresIn ? Date.now() + expiresIn * 1000 : null,
       }));
 
