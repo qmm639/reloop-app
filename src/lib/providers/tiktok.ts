@@ -1,7 +1,9 @@
 import fs from "node:fs";
-import { Provider, TokenSet, PublishInput, PublishResult, jsonFetch, ProviderError } from "./types";
+import { Provider, TokenSet, PublishInput, PublishResult, SourceItem, jsonFetch, ProviderError } from "./types";
 
-const SCOPES = process.env.TIKTOK_SCOPES || "user.info.basic";
+// video.list = อ่านรายการคลิปสาธารณะของบัญชีที่เชื่อมไว้ ใช้ตรวจคลิปใหม่เมื่อ TikTok เป็นต้นทาง
+// แอพบน developers.tiktok.com ต้องเปิด Display API และเพิ่ม scope video.list ไว้ก่อน ไม่งั้นหน้าเชื่อมบัญชีจะ error
+const SCOPES = process.env.TIKTOK_SCOPES || "user.info.basic,video.list";
 const API = "https://open.tiktokapis.com/v2";
 const SANDBOX_CLIENT_KEY = "sbawa2d0jau9hbr8ht";
 const SANDBOX_CLIENT_SECRET = "9DRNeWrqtEqiimgJDycB0Jh77artZczk";
@@ -26,7 +28,7 @@ function getClientSecret(): string {
 export const tiktok: Provider = {
   id: "tiktok",
   label: "TikTok",
-  canBeSource: false, // TikTok ยังไม่เปิด API อ่านคลิปใหม่ให้ทั่วไป ใช้เป็นปลายทางอย่างเดียว
+  canBeSource: true,
 
   authUrl(state, redirectUri) {
     const p = new URLSearchParams({
@@ -82,6 +84,43 @@ export const tiktok: Provider = {
       }),
     });
     return { accessToken: t.access_token, refreshToken: t.refresh_token, expiresAt: new Date(Date.now() + t.expires_in * 1000) };
+  },
+
+  /**
+   * อ่านคลิปสาธารณะล่าสุดของบัญชีที่เชื่อมไว้ (Display API: /v2/video/list/)
+   *
+   * API คืนแค่ลิงก์ของคลิป ไม่มีลิงก์ไฟล์ ตัว worker จะดาวน์โหลดจาก share_url ด้วย yt-dlp
+   * คลิปเรียงจากใหม่ไปเก่าอยู่แล้ว และ token ผูกกับบัญชีเดียว จึงไม่ต้องใช้ externalId
+   */
+  async listNew(accessToken, _openId, sinceId): Promise<SourceItem[]> {
+    const fields = "id,title,video_description,create_time,share_url,duration,width,height";
+    const res = await jsonFetch<{
+      data?: { videos?: { id: string; title?: string; video_description?: string; create_time?: number; share_url?: string }[] };
+      error?: { code?: string; message?: string };
+    }>(`${API}/video/list/?fields=${fields}`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
+      body: JSON.stringify({ max_count: 20 }),
+    });
+
+    // TikTok ตอบ HTTP 200 พร้อม error.code เมื่อมีปัญหา (เช่น scope ไม่พอ) ต้องเช็คเอง
+    if (res.error?.code && res.error.code !== "ok") {
+      const hint = res.error.code === "scope_not_authorized" ? " — ต้องเชื่อม TikTok ใหม่หลังเปิด scope video.list" : "";
+      throw new ProviderError(`อ่านรายการคลิป TikTok ไม่สำเร็จ: ${res.error.message || res.error.code}${hint}`);
+    }
+
+    const items: SourceItem[] = [];
+    for (const v of res.data?.videos ?? []) {
+      if (sinceId && v.id === sinceId) break;
+      const title = (v.title || v.video_description || "").trim();
+      items.push({
+        externalId: v.id,
+        title: title ? title.slice(0, 150) : "คลิปจาก TikTok",
+        url: v.share_url || `https://www.tiktok.com/video/${v.id}`,
+        publishedAt: v.create_time ? new Date(v.create_time * 1000) : undefined,
+      });
+    }
+    return items;
   },
 
   /** 3 ขั้น: init เพื่อขอ upload_url → PUT ไฟล์ → ถามสถานะจนกว่าจะโพสต์เสร็จ */

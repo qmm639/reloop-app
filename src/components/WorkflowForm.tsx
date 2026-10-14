@@ -21,7 +21,7 @@ export default function WorkflowForm({
   subtitleEnabled: boolean;
 }) {
   const router = useRouter();
-  const sources = connections.filter((c) => c.provider === "youtube" || c.provider === "facebook");
+  const sources = connections.filter((c) => c.provider === "youtube" || c.provider === "facebook" || c.provider === "tiktok");
   const [sourceId, setSourceId] = useState(sources[0]?.id ?? "");
   const [dest, setDest] = useState<string[]>(connections.filter((c) => c.id !== sources[0]?.id).slice(0, 2).map((c) => c.id));
   const [rules, setRules] = useState<Record<string, boolean>>({ crop: false, subtitle: false, logo: false, highlights: false });
@@ -41,7 +41,7 @@ export default function WorkflowForm({
       body: JSON.stringify({
         name: fd.get("name"),
         sourceConnectionId: sourceId || undefined,
-        sourceKind: source?.provider === "facebook" ? "facebook_live" : "youtube",
+        sourceKind: source?.provider === "facebook" ? "facebook_live" : source?.provider === "tiktok" ? "tiktok" : "youtube",
         sourceRef: source?.externalId,
         checkEvery: Number(fd.get("checkEvery")),
         schedule: fd.get("schedule"),
