@@ -8,8 +8,6 @@ const DEFAULT_SCOPES = [
   "pages_show_list",
   "pages_manage_posts",
   "pages_read_engagement",
-  "instagram_basic",
-  "instagram_content_publish",
   "business_management",
 ];
 const SCOPES = (process.env.META_SCOPES || DEFAULT_SCOPES.join(","))
