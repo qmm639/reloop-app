@@ -114,6 +114,36 @@ export async function POST(req: NextRequest) {
           meta: JSON.stringify({ instagramId: page.instagramId ?? null }),
         },
       });
+
+      if (page.instagramId) {
+        const igName = page.instagramUsername
+          ? `@${page.instagramUsername} (${page.name})`
+          : `Instagram ของเพจ ${page.name}`;
+        await db.connection.upsert({
+          where: {
+            userId_provider_externalId: {
+              userId: user.id,
+              provider: "instagram",
+              externalId: page.instagramId,
+            },
+          },
+          update: {
+            displayName: igName,
+            accessToken: encrypt(page.accessToken),
+            expiresAt: data.expiresAt ? new Date(data.expiresAt) : null,
+            meta: JSON.stringify({ pageId: page.id }),
+          },
+          create: {
+            userId: user.id,
+            provider: "instagram",
+            externalId: page.instagramId,
+            displayName: igName,
+            accessToken: encrypt(page.accessToken),
+            expiresAt: data.expiresAt ? new Date(data.expiresAt) : null,
+            meta: JSON.stringify({ pageId: page.id }),
+          },
+        });
+      }
     }
   }
 

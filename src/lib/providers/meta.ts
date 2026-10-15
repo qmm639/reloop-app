@@ -217,12 +217,113 @@ export const facebook: Provider = {
   },
 };
 
+interface IgEmbedContext {
+  username?: string;
+  full_name?: string;
+  owner_id?: string;
+  graphql_media?: {
+    shortcode_media?: {
+      id?: string;
+      shortcode?: string;
+      is_video?: boolean;
+      taken_at_timestamp?: number;
+      edge_media_to_caption?: { edges?: { node?: { text?: string } }[] };
+    };
+  }[];
+}
+
+function extractIgUsername(raw: string): string {
+  const trimmed = raw.trim();
+  const m = trimmed.match(/instagram\.com\/(?!reel\/|p\/|stories\/|explore\/)([A-Za-z0-9._]+)/i);
+  if (m) return m[1];
+  return trimmed.replace(/^@/, "").split(/[/?#]/)[0].trim();
+}
+
+async function fetchIgEmbedContext(rawInput: string): Promise<IgEmbedContext> {
+  const username = extractIgUsername(rawInput);
+  if (!username) throw new ProviderError("กรุณาระบุ @ชื่อบัญชี หรือลิงก์โปรไฟล์ Instagram");
+
+  const res = await fetch(`https://www.instagram.com/${encodeURIComponent(username)}/embed/`, {
+    headers: {
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+      Accept: "text/html,application/xhtml+xml",
+    },
+  });
+  if (!res.ok) throw new ProviderError(`ไม่พบบัญชี Instagram @${username}`, res.status);
+  const html = await res.text();
+  const m = html.match(/"contextJSON":"((?:\\.|[^"])*)"/);
+  if (!m) throw new ProviderError(`ไม่พบข้อมูลสาธารณะของ Instagram @${username} (บัญชีอาจตั้งเป็นส่วนตัว)`);
+
+  const unescaped = JSON.parse(`"${m[1]}"`) as string;
+  const parsed = JSON.parse(unescaped) as { context?: IgEmbedContext };
+  const ctx = parsed.context;
+  if (!ctx?.username) {
+    throw new ProviderError(`ไม่พบบัญชี Instagram @${username} หรือบัญชีถูกตั้งเป็นส่วนตัว`);
+  }
+  return ctx;
+}
+
+export async function resolveInstagramPublicChannel(input: string): Promise<{ username: string; fullName: string; ownerId: string }> {
+  const ctx = await fetchIgEmbedContext(input);
+  return {
+    username: ctx.username!,
+    fullName: ctx.full_name || ctx.username!,
+    ownerId: ctx.owner_id || ctx.username!,
+  };
+}
+
+export async function listInstagramPublicVideos(usernameOrId: string, sinceId?: string | null) {
+  const username = usernameOrId.replace(/^ig_public:/, "").replace(/^@/, "");
+  const ctx = await fetchIgEmbedContext(username);
+  const items = [];
+  for (const entry of ctx.graphql_media ?? []) {
+    const sm = entry.shortcode_media;
+    if (!sm?.shortcode || !sm.is_video) continue;
+    const extId = sm.id || sm.shortcode;
+    if (sinceId && (extId === sinceId || sm.shortcode === sinceId)) break;
+    const caption = sm.edge_media_to_caption?.edges?.[0]?.node?.text?.trim() ?? "";
+    items.push({
+      externalId: extId,
+      title: caption ? caption.slice(0, 150) : `คลิปจาก Instagram @${ctx.username}`,
+      url: `https://www.instagram.com/reel/${sm.shortcode}/`,
+      publishedAt: sm.taken_at_timestamp ? new Date(sm.taken_at_timestamp * 1000) : undefined,
+    });
+  }
+  return items;
+}
+
 export const instagram: Provider = {
   id: "instagram",
   label: "Instagram Reels",
-  canBeSource: false,
+  canBeSource: true,
   authUrl,
   exchange: (code, redirectUri) => exchangeMeta(code, redirectUri, "instagram"),
+
+  async listNew(accessToken, igUserId, sinceId) {
+    if (accessToken.startsWith("public:") || igUserId.startsWith("ig_public:") || igUserId.startsWith("@")) {
+      const username = accessToken.startsWith("public:") ? accessToken.slice("public:".length) : igUserId;
+      return listInstagramPublicVideos(username, sinceId);
+    }
+
+    const res = await jsonFetch<{
+      data: { id: string; caption?: string; media_type?: string; media_url?: string; permalink?: string; timestamp?: string }[];
+    }>(`${GRAPH}/${igUserId}/media?fields=id,caption,media_type,media_url,permalink,timestamp&limit=15&access_token=${accessToken}`);
+
+    const items = [];
+    for (const m of res.data ?? []) {
+      if (sinceId && m.id === sinceId) break;
+      if (m.media_type !== "VIDEO") continue;
+      const url = m.media_url || m.permalink;
+      if (!url) continue;
+      items.push({
+        externalId: m.id,
+        title: m.caption?.trim().slice(0, 150) || "คลิปจาก Instagram",
+        url,
+        publishedAt: m.timestamp ? new Date(m.timestamp) : undefined,
+      });
+    }
+    return items;
+  },
 
   /**
    * Instagram ไม่รับอัปโหลดไฟล์ตรง ต้องส่ง URL สาธารณะของไฟล์

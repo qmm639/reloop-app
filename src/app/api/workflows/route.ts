@@ -8,7 +8,7 @@ import { PLANS, PlanId } from "@/lib/plans";
 const schema = z.object({
   name: z.string().min(1).max(80),
   sourceConnectionId: z.string().optional(),
-  sourceKind: z.enum(["youtube", "tiktok", "facebook_live", "upload"]),
+  sourceKind: z.enum(["youtube", "tiktok", "facebook_live", "instagram", "upload"]),
   sourceRef: z.string().max(200).optional(),
   checkEvery: z.number().int().min(5).max(1440).default(5),
   schedule: z.enum(["instant", "peak", "spread"]).default("instant"),

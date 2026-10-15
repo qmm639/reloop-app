@@ -21,8 +21,10 @@ export default function WorkflowForm({
   subtitleEnabled: boolean;
 }) {
   const router = useRouter();
-  const sources = connections.filter((c) => c.provider === "youtube" || c.provider === "facebook" || c.provider === "tiktok");
-  const destCandidates = connections.filter((c) => !(c.provider === "tiktok" && c.externalId.startsWith("MS4w")));
+  const sources = connections.filter((c) => c.provider === "youtube" || c.provider === "facebook" || c.provider === "tiktok" || c.provider === "instagram");
+  const destCandidates = connections.filter(
+    (c) => !(c.provider === "tiktok" && c.externalId.startsWith("MS4w")) && !(c.provider === "instagram" && c.externalId.startsWith("ig_public:")),
+  );
   const [sourceId, setSourceId] = useState(sources[0]?.id ?? "");
   const [dest, setDest] = useState<string[]>(destCandidates.filter((c) => c.id !== sources[0]?.id).slice(0, 2).map((c) => c.id));
   const [rules, setRules] = useState<Record<string, boolean>>({ crop: false, subtitle: false, logo: false, highlights: false });
@@ -42,7 +44,14 @@ export default function WorkflowForm({
       body: JSON.stringify({
         name: fd.get("name"),
         sourceConnectionId: sourceId || undefined,
-        sourceKind: source?.provider === "facebook" ? "facebook_live" : source?.provider === "tiktok" ? "tiktok" : "youtube",
+        sourceKind:
+          source?.provider === "facebook"
+            ? "facebook_live"
+            : source?.provider === "tiktok"
+              ? "tiktok"
+              : source?.provider === "instagram"
+                ? "instagram"
+                : "youtube",
         sourceRef: source?.externalId,
         checkEvery: Number(fd.get("checkEvery")),
         schedule: fd.get("schedule"),
