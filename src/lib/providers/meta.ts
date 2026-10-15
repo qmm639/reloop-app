@@ -243,12 +243,7 @@ async function fetchIgEmbedContext(rawInput: string): Promise<IgEmbedContext> {
   const username = extractIgUsername(rawInput);
   if (!username) throw new ProviderError("กรุณาระบุ @ชื่อบัญชี หรือลิงก์โปรไฟล์ Instagram");
 
-  const res = await fetch(`https://www.instagram.com/${encodeURIComponent(username)}/embed/`, {
-    headers: {
-      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-      Accept: "text/html,application/xhtml+xml",
-    },
-  });
+  const res = await fetch(`https://www.instagram.com/${encodeURIComponent(username)}/embed/`);
   if (!res.ok) throw new ProviderError(`ไม่พบบัญชี Instagram @${username}`, res.status);
   const html = await res.text();
   const m = html.match(/"contextJSON":"((?:\\.|[^"])*)"/);
@@ -264,12 +259,20 @@ async function fetchIgEmbedContext(rawInput: string): Promise<IgEmbedContext> {
 }
 
 export async function resolveInstagramPublicChannel(input: string): Promise<{ username: string; fullName: string; ownerId: string }> {
-  const ctx = await fetchIgEmbedContext(input);
-  return {
-    username: ctx.username!,
-    fullName: ctx.full_name || ctx.username!,
-    ownerId: ctx.owner_id || ctx.username!,
-  };
+  const fallbackUser = extractIgUsername(input);
+  try {
+    const ctx = await fetchIgEmbedContext(input);
+    return {
+      username: ctx.username!,
+      fullName: ctx.full_name || ctx.username!,
+      ownerId: ctx.owner_id || ctx.username!,
+    };
+  } catch (e) {
+    if (/^[A-Za-z0-9._]{1,30}$/.test(fallbackUser)) {
+      return { username: fallbackUser, fullName: fallbackUser, ownerId: fallbackUser };
+    }
+    throw e;
+  }
 }
 
 export async function listInstagramPublicVideos(usernameOrId: string, sinceId?: string | null) {
