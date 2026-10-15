@@ -39,11 +39,34 @@ export default async function Connections({ searchParams }: { searchParams: Prom
               <b>{p.label}</b>
             </div>
             <p className="muted" style={{ fontSize: 13 }}>
-              {p.canBeSource ? "ใช้เป็นต้นทางและปลายทางได้" : "ใช้เป็นปลายทางเท่านั้น"}
+              {p.id === "tiktok"
+                ? "ใส่ @ชื่อช่อง หรือลิงก์ช่องเพื่อดึงคลิปใหม่ได้ทันทีโดยไม่ต้องล็อกอิน"
+                : p.canBeSource
+                  ? "ใช้เป็นต้นทางและปลายทางได้"
+                  : "ใช้เป็นปลายทางเท่านั้น"}
             </p>
-            <a className="btn btn-line" href={`/api/connect/${p.id}`}>
-              {p.id === "facebook" ? "เชื่อมต่อ / เพิ่มเพจ" : "เชื่อมบัญชี"}
-            </a>
+            {p.id === "tiktok" ? (
+              <div className="grid" style={{ gap: 8 }}>
+                <form action="/api/connect/tiktok/public" method="POST" className="grid" style={{ gap: 6 }}>
+                  <input
+                    name="handle"
+                    placeholder="@ชื่อช่อง หรือลิงก์ TikTok"
+                    required
+                    style={{ minHeight: 38, fontSize: 13 }}
+                  />
+                  <button type="submit" className="btn btn-main" style={{ minHeight: 38, fontSize: 13 }}>
+                    เชื่อมช่อง TikTok (ดึงคลิป)
+                  </button>
+                </form>
+                <a className="btn btn-line" href={`/api/connect/${p.id}`} style={{ minHeight: 34, fontSize: 12 }}>
+                  ล็อกอิน TikTok (สำหรับโพสต์ลง TikTok)
+                </a>
+              </div>
+            ) : (
+              <a className="btn btn-line" href={`/api/connect/${p.id}`}>
+                {p.id === "facebook" ? "เชื่อมต่อ / เพิ่มเพจ" : "เชื่อมบัญชี"}
+              </a>
+            )}
           </div>
         ))}
       </div>

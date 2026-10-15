@@ -22,8 +22,9 @@ export default function WorkflowForm({
 }) {
   const router = useRouter();
   const sources = connections.filter((c) => c.provider === "youtube" || c.provider === "facebook" || c.provider === "tiktok");
+  const destCandidates = connections.filter((c) => !(c.provider === "tiktok" && c.externalId.startsWith("MS4w")));
   const [sourceId, setSourceId] = useState(sources[0]?.id ?? "");
-  const [dest, setDest] = useState<string[]>(connections.filter((c) => c.id !== sources[0]?.id).slice(0, 2).map((c) => c.id));
+  const [dest, setDest] = useState<string[]>(destCandidates.filter((c) => c.id !== sources[0]?.id).slice(0, 2).map((c) => c.id));
   const [rules, setRules] = useState<Record<string, boolean>>({ crop: false, subtitle: false, logo: false, highlights: false });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -126,7 +127,7 @@ export default function WorkflowForm({
       <fieldset style={{ border: "1px solid var(--line)", borderRadius: 12, padding: 14 }}>
         <legend className="mono muted">ปลายทาง ({dest.length} ช่อง)</legend>
         <div className="grid" style={{ gap: 8 }}>
-          {connections.map((c) => (
+          {destCandidates.map((c) => (
             <label key={c.id} className="row" style={{ gap: 10 }}>
               <input
                 type="checkbox"

@@ -1,5 +1,133 @@
+import { execFile } from "node:child_process";
 import fs from "node:fs";
+import path from "node:path";
+import { promisify } from "node:util";
 import { Provider, TokenSet, PublishInput, PublishResult, SourceItem, jsonFetch, ProviderError } from "./types";
+
+const exec = promisify(execFile);
+
+function getYtdlpPython(): string {
+  if (process.env.YTDLP_PYTHON_PATH) return process.env.YTDLP_PYTHON_PATH;
+  if (fs.existsSync("/opt/ytdlp/bin/python")) return "/opt/ytdlp/bin/python";
+  if (process.env.YTDLP_PATH) {
+    const dir = path.dirname(process.env.YTDLP_PATH);
+    for (const name of ["python.exe", "python3", "python"]) {
+      const candidate = path.join(dir, name);
+      if (fs.existsSync(candidate)) return candidate;
+    }
+  }
+  return "python3";
+}
+
+const PY_TIKTOK_HELPER = `
+import json, re, sys, time, yt_dlp
+import yt_dlp.extractor.tiktok as t
+
+mode = sys.argv[1]
+arg1 = sys.argv[2].strip()
+arg2 = sys.argv[3].strip() if len(sys.argv) > 3 else ""
+
+ydl = yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True})
+ie = t.TikTokUserIE(ydl)
+
+def resolve_user(raw):
+    if re.search(r"(?:vt\\.tiktok\\.com|vm\\.tiktok\\.com|/video/\\d+)", raw):
+        info = ydl.extract_info(raw, download=False)
+        sec = info.get("channel_id")
+        uid = info.get("uploader_id") or info.get("uploader") or ""
+        nick = info.get("uploader") or uid
+        if sec:
+            return {"secUid": sec, "uniqueId": uid, "nickname": nick}
+    m = re.search(r"tiktok\\.com/@([\\w.-]+)", raw)
+    u = m.group(1) if m else raw.lstrip("@").split("?")[0].split("/")[0].strip()
+    url = "https://www.tiktok.com/@" + u
+    h = ie._generate_blockbuster_headers()
+    wp = ie._download_webpage(url, u, headers=h, impersonate=True, fatal=False) or ""
+    ud = ie._get_universal_data(wp, u)
+    if not ud and wp:
+        try:
+            ie._solve_challenge_and_set_cookies(wp)
+            wp = ie._download_webpage(url, u, headers=h, impersonate=True, fatal=False) or ""
+            ud = ie._get_universal_data(wp, u)
+        except Exception:
+            pass
+    user = (ud or {}).get("webapp.user-detail", {}).get("userInfo", {}).get("user", {})
+    sec = user.get("secUid") or ie._extract_sec_uid_from_embed(u)
+    uid = user.get("uniqueId") or u
+    nick = user.get("nickname") or uid
+    return {"secUid": sec, "uniqueId": uid, "nickname": nick}
+
+if mode == "resolve":
+    info = resolve_user(arg1)
+    if not info.get("secUid"):
+        print(json.dumps({"error": "ไม่พบช่อง TikTok นี้ หรือช่องถูกตั้งเป็นส่วนตัว"}))
+        sys.exit(0)
+    print(json.dumps(info))
+elif mode == "list":
+    sec_uid = arg1
+    uid = arg2 or "tiktok"
+    if not sec_uid.startswith("MS4w"):
+        info = resolve_user(sec_uid)
+        sec_uid = info.get("secUid") or ""
+        uid = info.get("uniqueId") or uid
+    if not sec_uid:
+        print(json.dumps({"error": "ไม่พบรหัสช่อง TikTok (secUid)"}))
+        sys.exit(0)
+    res = ie._download_json(ie._API_BASE_URL, uid, query=ie._build_web_query(sec_uid, int(time.time() * 1000)), impersonate=True, fatal=False) or {}
+    if not res.get("itemList") and uid:
+        resolve_user(uid)
+        res = ie._download_json(ie._API_BASE_URL, uid, query=ie._build_web_query(sec_uid, int(time.time() * 1000)), impersonate=True, fatal=False) or {}
+    videos = []
+    for v in res.get("itemList") or []:
+        vid = v.get("id")
+        if not vid:
+            continue
+        author = (v.get("author") or {}).get("uniqueId") or uid
+        desc = (v.get("desc") or "").strip()
+        videos.append({
+            "id": str(vid),
+            "title": desc[:150] if desc else f"คลิปจาก TikTok @{author}",
+            "url": f"https://www.tiktok.com/@{author}/video/{vid}",
+            "createTime": v.get("createTime"),
+        })
+    print(json.dumps({"videos": videos}))
+`;
+
+export async function resolveTikTokPublicChannel(input: string): Promise<{ secUid: string; uniqueId: string; nickname: string }> {
+  const py = getYtdlpPython();
+  const { stdout } = await exec(py, ["-c", PY_TIKTOK_HELPER, "resolve", input], { timeout: 30_000 });
+  const lastLine = stdout.trim().split(/\r?\n/).pop() ?? "{}";
+  const parsed = JSON.parse(lastLine) as { secUid?: string; uniqueId?: string; nickname?: string; error?: string };
+  if (parsed.error || !parsed.secUid) {
+    throw new ProviderError(parsed.error || "ไม่พบช่อง TikTok ที่ระบุ");
+  }
+  return {
+    secUid: parsed.secUid,
+    uniqueId: parsed.uniqueId || input.replace(/^@/, ""),
+    nickname: parsed.nickname || parsed.uniqueId || input,
+  };
+}
+
+export async function listTikTokPublicVideos(secUidOrUser: string, uniqueIdHint: string, sinceId?: string | null): Promise<SourceItem[]> {
+  const py = getYtdlpPython();
+  const { stdout } = await exec(py, ["-c", PY_TIKTOK_HELPER, "list", secUidOrUser, uniqueIdHint], { timeout: 45_000 });
+  const lastLine = stdout.trim().split(/\r?\n/).pop() ?? "{}";
+  const parsed = JSON.parse(lastLine) as { videos?: { id: string; title: string; url: string; createTime?: number }[]; error?: string };
+  if (parsed.error) {
+    throw new ProviderError(parsed.error);
+  }
+  const items: SourceItem[] = [];
+  for (const v of parsed.videos ?? []) {
+    if (sinceId && v.id === sinceId) break;
+    items.push({
+      externalId: v.id,
+      title: v.title || "คลิปจาก TikTok",
+      url: v.url,
+      publishedAt: v.createTime ? new Date(v.createTime * 1000) : undefined,
+    });
+  }
+  return items;
+}
 
 // video.list = อ่านรายการคลิปสาธารณะของบัญชีที่เชื่อมไว้ ใช้ตรวจคลิปใหม่เมื่อ TikTok เป็นต้นทาง
 // แอพบน developers.tiktok.com ต้องเปิด Display API และเพิ่ม scope video.list ไว้ก่อน ไม่งั้นหน้าเชื่อมบัญชีจะ error
@@ -93,12 +221,15 @@ export const tiktok: Provider = {
   },
 
   /**
-   * อ่านคลิปสาธารณะล่าสุดของบัญชีที่เชื่อมไว้ (Display API: /v2/video/list/)
-   *
-   * API คืนแค่ลิงก์ของคลิป ไม่มีลิงก์ไฟล์ ตัว worker จะดาวน์โหลดจาก share_url ด้วย yt-dlp
-   * คลิปเรียงจากใหม่ไปเก่าอยู่แล้ว และ token ผูกกับบัญชีเดียว จึงไม่ต้องใช้ externalId
+   * อ่านคลิปสาธารณะล่าสุดของบัญชีที่เชื่อมไว้
+   * รองรับทั้งบัญชีที่เชื่อมด้วย @ชื่อช่อง (ไม่ต้องผ่าน OAuth/Sandbox) และบัญชีที่เชื่อมผ่าน OAuth Display API
    */
-  async listNew(accessToken, _openId, sinceId): Promise<SourceItem[]> {
+  async listNew(accessToken, externalId, sinceId): Promise<SourceItem[]> {
+    if (accessToken.startsWith("public:") || externalId.startsWith("MS4w") || externalId.startsWith("@")) {
+      const uniqueId = accessToken.startsWith("public:") ? accessToken.slice("public:".length) : externalId.replace(/^@/, "");
+      return listTikTokPublicVideos(externalId, uniqueId, sinceId);
+    }
+
     const fields = "id,title,video_description,create_time,share_url,duration,width,height";
     const res = await jsonFetch<{
       data?: { videos?: { id: string; title?: string; video_description?: string; create_time?: number; share_url?: string }[] };
